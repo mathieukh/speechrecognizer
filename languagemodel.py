@@ -14,9 +14,9 @@ class LanguageModel:
         
         self.batch_s = 8 # Nombre d'exemples a prendre par batch
         n_lstm = 512 # Nombre de neurones par couche LSTM
-        n_input = n_classes = 28 # Nombre d'entrees dans notre reseau (28 caracteres pour celui en cours)
+        n_input = n_classes = 29 # Nombre d'entrees dans notre reseau (28 caracteres pour celui en cours)
         
-        learning_rate = 5e-3 # Vitesse d'apprentissage
+        learning_rate = 0.1 # Vitesse d'apprentissage
         
         # On cree un placeholder 3D [ nombre_exemples x max_length ]
         # Il recevra les entrees pour notre reseau
@@ -24,13 +24,14 @@ class LanguageModel:
         
         # On cree un sparse_placeholder requis pour calculer le ctc_loss
         # Il permet de recevoir les sorties attendues par notre reseau
-        self._targets = tf.placeholder(tf.int32, shape=(None), name="targets")
+        self._targets = tf.placeholder(tf.int32, shape=(None, 1), name="targets")
+        _targets = tf.squeeze(self._targets)
         
         # Variable self.learning_rate qui n'est pas entrainable. Elle est initialisee a 1e-5 ici (voir ci-dessus)
         self.learning_rate = tf.Variable(float(learning_rate), trainable=False, name="learning_rate")
         
         # Operation permettant de faire decroitre le learning_rate en le divisant par 10 == multipliant par 0.1
-        self.learning_rate_decay_op = self.learning_rate.assign(self.learning_rate * 0.1)
+        self.learning_rate_decay_op = self.learning_rate.assign(self.learning_rate * 0.5)
         
         # Variable self.loss_variable qui n'est pas entrainable. Elle est initialise a 0 ici
         self.loss_variable = tf.Variable(0.0, trainable=False, name="loss_variable")
@@ -65,7 +66,7 @@ class LanguageModel:
         
         # Operation permettant de calculer le softmax_cross_entropy entre les targets et les labels
         with tf.name_scope('Loss'):
-            loss_batch = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=self._targets)
+            loss_batch = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=_targets)
             self.loss = tf.reduce_mean(loss_batch)
             # Operation permettant d'assigner le loss a la variable loss
             self.loss_variable_assign_op = self.loss_variable.assign(self.loss)
@@ -93,49 +94,56 @@ class LanguageModel:
     # Fonction d'entrainement de notre reseau
     def train(self):
         # On initialise previous_loss et no_improvement_since a 0
+        epoch = 1
         previous_loss = 0.0
-        no_improvement_since = 0
+        number_decrement = 0
         # On demarre la session depuis le superviseur. Celui-ci se chargera de restaurer les variables si elles sont disponibles depuis une sauvegarde
         # Sinon ils les initialisera
         
         # On stocke un pattern de phrase pour printer a chaque tour
-        log = "Step {}, batch_cost = {:.6f}, time = {:.3f}"
+        log = "Epoch {} / Step {}, batch_cost = {:.6f}, time = {:.3f}"
+        log_validation = "Epoch {}, cost_validation = {:.6f}"
         with self.sv.managed_session() as sess:
             while True:
                 # Si le superviseur demande un arret, on coupe la boucle d'apprentissage
                 if self.sv.should_stop():
                     break
-                # On recupere les exemples que l'on souhaite entrainer
-                inputs, targets = ls.getLMExamples(self.batch_s)
+                for inputs, targets in ls.getAll_LMData(self.batch_s):
                 
-                # On prend une mesure du temps pour savoir combien de temps dure l'etape
-                start = time.time()
+                    # On prend une mesure du temps pour savoir combien de temps dure l'etape
+                    start = time.time()
                 
-                # On fait le loss afin de recuperer d'en recuperer la valeur, opt pour optimiser le reseau  
+                    # On fait le loss afin de recuperer d'en recuperer la valeur, opt pour optimiser le reseau  
+                    loss,_,_ = sess.run([self.loss, self.opt, self.loss_variable_assign_op], feed_dict={self._inputs: inputs, self._targets: targets})
                 
-                loss,_,_ = sess.run([self.loss, self.opt, self.loss_variable_assign_op], feed_dict={self._inputs: inputs, self._targets: targets})
+                    # On affiche la phrase d'etape
+                    print(log.format(epoch, self.global_step.eval(session=sess), loss, time.time() - start))
+                
+                epoch += 1
+                loss_validation = 0.0
+                for inputs, targets in ls.getAll_LMData(self.batch_s, data_type='evaluation'):
+                
+                    # On prend une mesure du temps pour savoir combien de temps dure l'etape
+                    start = time.time()
+                
+                    # On fait le loss afin de recuperer d'en recuperer la valeur, opt pour optimiser le reseau  
+                    loss_validation += sess.run([self.loss], feed_dict={self._inputs: inputs, self._targets: targets}) / len(inputs)
                 
                 # On affiche la phrase d'etape
-                print(log.format(self.global_step.eval(session=sess), loss, time.time() - start))
-                
+                print(log_validation.format(epoch, loss_validation))                
                 # Si la valeur du loss n'a pas evolue par rapport a l'ancienne
-                if loss >= previous_loss:
-                    # On incremente no_improvement_since de 1
-                    no_improvement_since += 1
-                    # Si on arrive a 6
-                    if no_improvement_since == 6:
-                        # On decremente notre vitesse d'apprentissage en appelant l'operation learning_rate_decay_op
+                if previous_loss > 0.0 and loss_validation >= previous_loss:
+                    # Si on a deja decremente notre learning rate, on s'arrete
+                    if number_decrement > 0:
+                        break
+                    else:
+                        # Sinon on decremente notre vitesse d'apprentissage en appelant l'operation learning_rate_decay_op
                         print('Decrement learning rate')
                         sess.run(self.learning_rate_decay_op)
-                        # On remet la variable no_improvement_since a 0
-                        no_improvement_since = 0
-                        # Si la vitesse d'apprentissage est en dessous de 1e-4, le modele arrete de s'entrainer et on brise la boucle d'apprentissage
-                        if self.learning_rate.eval(session=sess) < 1e-4:
-                            break
-                else:
-                    no_improvement_since = 0
-                # On change la valeur de previous_loss par loss
-                previous_loss = loss
+                        # On incremente number_decrement de 1
+                        number_decrement += 1
+                # On change la valeur de previous_loss par loss_validation
+                previous_loss = loss_validation
                 
     def predict(self, n, from_=[]):
         with self.sv.managed_session() as sess:
