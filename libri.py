@@ -14,7 +14,9 @@ data_file_training = path + 'data_training.pkl'
 data_file_evaluation = path + 'data_evaluation.pkl'
 
 data_training = []
+nbr_data_training = len(data_training)
 data_evaluation = []
+nbr_data_evaluation = len(data_evaluation)
 
 
 # Permettra de faire l'indexage de notre alphabet depuis ici
@@ -85,12 +87,16 @@ def init_data():
     """
     global data_training
     global data_evaluation
+    global nbr_data_training
+    global nbr_data_evaluation
     if not data_training:
         with open(data_file_training, 'rb') as f:
             data_training = pkl.load(f)
+            nbr_data_training = len(data_training)
     if not data_evaluation:
         with open(data_file_evaluation, 'rb') as f:
             data_evaluation = pkl.load(f)
+            nbr_data_evaluation = len(data_evaluation)
             
 def __targetsAM_from_data(data):
     """
@@ -318,6 +324,6 @@ def getAll_LMData(n, data_type='training'):
 
 # Si on demarre le fichier directement
 if __name__ == '__main__':
-    d = getN_LMData(2)
+    (inputs, targets) = getN_LMData(2)
     print(d)
     #print(int_to_string(get_NAMData(2)[1][1]))
