@@ -119,7 +119,7 @@ class LanguageModel:
                     # On affiche la phrase d'etape
                     print(log.format(epoch, self.global_step.eval(session=sess), loss, time.time() - start))
                 
-                epoch += 1
+                
                 loss_validation = 0.0
                 for inputs, targets in ls.getAll_LMData(self.batch_s, data_type='evaluation'):
                 
@@ -142,6 +142,8 @@ class LanguageModel:
                         sess.run(self.learning_rate_decay_op)
                         # On incremente number_decrement de 1
                         number_decrement += 1
+                # On incremente le compteur d'epoch
+                epoch += 1
                 # On change la valeur de previous_loss par loss_validation
                 previous_loss = loss_validation
                 
