@@ -14,27 +14,36 @@ class LanguageModel:
         
         self.batch_s = 8 # Nombre d'exemples a prendre par batch
         n_lstm = 512 # Nombre de neurones par couche LSTM
-        n_input = n_classes = 29 # Nombre d'entrees dans notre reseau (28 caracteres pour celui en cours)
+        n_input = n_classes = 29 # Nombre d'entrees dans notre reseau (29 caracteres pour celui en cours)
         
         learning_rate = 0.1 # Vitesse d'apprentissage
         
-        # On cree un placeholder 3D [ nombre_exemples x max_length ]
+        # On cree un placeholder 2D [ nombre_exemples x max_length ]
+        # On presente la phrase comme une multitude d'exemples specifies comme une suite de caracteres
         # Il recevra les entrees pour notre reseau
         self._inputs = tf.placeholder(tf.int32, shape=(None, 1), name="inputs")
         
-        # On cree un sparse_placeholder requis pour calculer le ctc_loss
+        # On cree un placeholder 2D [ nombre_exemples x max_length ]
+        # Les caracteres suivants sont notes comme cible
         # Il permet de recevoir les sorties attendues par notre reseau
         self._targets = tf.placeholder(tf.int32, shape=(None, 1), name="targets")
+        # On ecrase la dimension de 1 qui ne sert pas dans la fonction de loss
         _targets = tf.squeeze(self._targets)
         
-        # Variable self.learning_rate qui n'est pas entrainable. Elle est initialisee a 1e-5 ici (voir ci-dessus)
+        # Variable self.learning_rate qui n'est pas entrainable. Elle est initialisee a 0.1 ici (voir ci-dessus)
         self.learning_rate = tf.Variable(float(learning_rate), trainable=False, name="learning_rate")
         
-        # Operation permettant de faire decroitre le learning_rate en le divisant par 10 == multipliant par 0.1
+        # Operation permettant de faire decroitre le learning_rate en le divisant par 2 == multipliant par 0.5
         self.learning_rate_decay_op = self.learning_rate.assign(self.learning_rate * 0.5)
         
-        # Variable self.loss_variable qui n'est pas entrainable. Elle est initialise a 0 ici
-        self.loss_variable = tf.Variable(0.0, trainable=False, name="loss_variable")
+        # Variable self.loss_training qui n'est pas entrainable. Elle est initialise a 0 ici
+        # Elle permet de mesurer le loss sur la base de training
+        self.loss_training = tf.Variable(0.0, trainable=False, name="loss_training")
+        
+        # Variable self.loss_validation qui n'est pas entrainable. Elle est initialise a 0 ici
+        # Elle permet de mesurer le loss sur la base de validation
+        self.loss_validation = tf.Variable(0.0, trainable=False, name="loss_validation")
+        
         
         # Conversion des donnees d'entree vers un encodage one-hot
         self.one_hot_inputs = tf.one_hot(self._inputs, n_input)
@@ -68,16 +77,17 @@ class LanguageModel:
         with tf.name_scope('Loss'):
             loss_batch = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits, labels=_targets)
             self.loss = tf.reduce_mean(loss_batch)
-            # Operation permettant d'assigner le loss a la variable loss
-            self.loss_variable_assign_op = self.loss_variable.assign(self.loss)
         
         # Operation permettant de predire le caractere suivant depuis l'entree soumise
+        # On ne calcule que depuis la derniere sortie du rnn_output
         self.logits_pred = logits[-1,:]
+        # On recupere l'argmax qui represente le caractere le plus probable du dernier caractere
         self.prediction = tf.argmax(self.logits_pred)
         
         with tf.name_scope('Summary'):
-            # On cree les summary des variables ctc_loss et learning_rate
-            tf.summary.scalar("loss", self.loss_variable)
+            # On cree les summary des variables loss et learning_rate
+            tf.summary.scalar("loss_training", self.loss_training)
+            tf.summary.scalar("loss_validation", self.loss_validation)
             tf.summary.scalar("learning_rate", self.learning_rate)    
         
             # On a aussi une variable global_step qui permet a notre superviseur de connaitre l'etat d'avancement de notre apprentissage
@@ -93,46 +103,77 @@ class LanguageModel:
         
     # Fonction d'entrainement de notre reseau
     def train(self):
-        # On initialise previous_loss et no_improvement_since a 0
+        # On initialise previous_loss et number_decrement a 0 et epoch a 1
         epoch = 1
+        every_step = 3
         previous_loss = 0.0
         number_decrement = 0
-        # On demarre la session depuis le superviseur. Celui-ci se chargera de restaurer les variables si elles sont disponibles depuis une sauvegarde
-        # Sinon ils les initialisera
         
         # On stocke un pattern de phrase pour printer a chaque tour
         log = "Epoch {} / Step {}, batch_cost = {:.6f}, time = {:.3f}"
         log_validation = "Epoch {}, cost_validation = {:.6f}"
+        
+        # On demarre la session depuis le superviseur. Celui-ci se chargera de restaurer les variables si elles sont disponibles depuis une sauvegarde
+        # Sinon ils les initialisera        
         with self.sv.managed_session() as sess:
             while True:
                 # Si le superviseur demande un arret, on coupe la boucle d'apprentissage
                 if self.sv.should_stop():
                     break
-                for inputs, targets in ls.getAll_LMData(self.batch_s):
                 
+                # On parcoure l'ensemble de la base d'entrainement
+                loss_training = []
+                # On parcoure l'ensemble de la base de training
+                for i, (inputs, targets) in enumerate(ls.getAll_LMData(self.batch_s)):
+                    
                     # On prend une mesure du temps pour savoir combien de temps dure l'etape
                     start = time.time()
                 
                     # On fait le loss afin de recuperer d'en recuperer la valeur, opt pour optimiser le reseau  
-                    loss,_,_ = sess.run([self.loss, self.opt, self.loss_variable_assign_op], feed_dict={self._inputs: inputs, self._targets: targets})
-                
+                    loss,_ = sess.run([self.loss, self.opt], feed_dict={self._inputs: inputs, self._targets: targets})
+                    
+                    # On ajoute le loss du batch a la liste de loss_training
+                    loss_training.append(loss)
+                    
                     # On affiche la phrase d'etape
                     print(log.format(epoch, self.global_step.eval(session=sess), loss, time.time() - start))
+                    
+                    # On met a jour la variable pour qu'elle puisse etre summarise 
+                    sess.run(self.loss_training, feed_dict={self.loss_training: np.mean(loss_training)})
+                    
+                    if i % every_step:
+                        loss_validation = []
+                        for (inputs, targets), n in zip(ls.getAll_LMData(self.batch_s, data_type='evaluation'), range(every_step)):
+                        
+                            # On prend une mesure du temps pour savoir combien de temps dure l'etape
+                            start = time.time()
+                        
+                            # On fait le loss afin de recuperer d'en recuperer la valeur 
+                            loss = sess.run(self.loss, feed_dict={self._inputs: inputs, self._targets: targets})
+                            # On ajoute le loss du batch a la liste de loss_validation
+                            loss_validation.append(loss)
+                            # On met a jour la variable pour qu'elle puisse etre summarise
+                            loss_val = sess.run(self.loss_validation, feed_dict={self.loss_validation: np.mean(loss_validation)})                        
                 
-                
-                loss_validation = 0.0
-                for inputs, targets in ls.getAll_LMData(self.batch_s, data_type='evaluation'):
+                # On initialise le loss_validation a 0
+                loss_validation = []
+                # On parcoure l'ensemble de la base de validation
+                for inputs, targets, n in ls.getAll_LMData(self.batch_s, data_type='evaluation'):
                 
                     # On prend une mesure du temps pour savoir combien de temps dure l'etape
                     start = time.time()
                 
-                    # On fait le loss afin de recuperer d'en recuperer la valeur, opt pour optimiser le reseau  
-                    loss_validation += sess.run([self.loss], feed_dict={self._inputs: inputs, self._targets: targets}) / len(inputs)
+                    # On fait le loss afin de recuperer d'en recuperer la valeur 
+                    loss = sess.run(self.loss, feed_dict={self._inputs: inputs, self._targets: targets})
+                    # On ajoute le loss du batch a la liste de loss_validation
+                    loss_validation.append(loss)
+                    # On met a jour la variable pour qu'elle puisse etre summarise
+                    loss_val = sess.run(self.loss_validation, feed_dict={self.loss_validation: np.mean(loss_validation)})
                 
                 # On affiche la phrase d'etape
-                print(log_validation.format(epoch, loss_validation))                
+                print(log_validation.format(epoch, loss_val))                
                 # Si la valeur du loss n'a pas evolue par rapport a l'ancienne
-                if previous_loss > 0.0 and loss_validation >= previous_loss:
+                if previous_loss > 0.0 and loss_val >= previous_loss:
                     # Si on a deja decremente notre learning rate, on s'arrete
                     if number_decrement > 0:
                         break
@@ -144,8 +185,8 @@ class LanguageModel:
                         number_decrement += 1
                 # On incremente le compteur d'epoch
                 epoch += 1
-                # On change la valeur de previous_loss par loss_validation
-                previous_loss = loss_validation
+                # On change la valeur de previous_loss par loss_val
+                previous_loss = loss_val
                 
     def predict(self, n, from_=[]):
         with self.sv.managed_session() as sess:
