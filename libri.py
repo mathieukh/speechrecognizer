@@ -222,71 +222,102 @@ def getAll_AMData(n, data_type='training'):
 
 
 #### Fonction de recuperation de donnees pour le modele linguistique ####
-
-def getLMData(data_type='training', rand=False):
+        
+def __get_LMData(data_type, id_data, sentence):
     """
+    La fonction prend en entree 3 parametres
     data_type: training ou evaluation
-    rand: booleen pour savoir si l'on souhaite lire les donnees dans l'ordre ou de maniere aleatoire
-    
-    Retourne un tuple du vecteur one hot encoded des caracteres et des suivants associes par un generateur 
+    id_data: string au format id1-id2-id3 attendu
+    sentence: phrase qui correspond au son id_data
+    ready_to_use: permet de couper la phrase pour servir d'entree et de sortie directement par le RN
     """
+    # On initialise les donnees 
+    init_data()
+    # On choisit le dossier correspond aux donnees qu'on souhaite ouvrir
     if data_type == 'training':
-        working_dir = path_training
+        path = path_training
     elif data_type == 'evaluation':
-        working_dir = path_evaluation
+        path = path_evaluation
+    # Si on ne reconnait pas la donnee, on souleve une exception
     else:
-        raise Exception()
-    directories1 = os.listdir(working_dir)
-    if rand:
-        random.shuffle(directories1)
-    for id1 in directories1:
-        working_dir_id1 = working_dir + id1 + "/"
-        directories2 = os.listdir(working_dir_id1)
-        if rand:
-            random.shuffle(directories2)        
-        for id2 in directories2:
-            working_dir_id2 = working_dir_id1 + id2 + "/"
-            fname = working_dir_id2 + id1 + "-" + id2 + ".trans.txt"
-            with open(fname) as f:
-                content = f.readlines()
-            if rand:
-                random.shuffle(content)             
-            for line in content:
-                sentence = string_to_int(line[(line.find(' ') + 1):]) + [28]
-                return sentence[:-1], sentence[1:]
+        raise Exception('Les donnees ' + str(data_type) + 'ne sont pas disponibles')
+    # On ajoute un symbole EOS a la fin de la phrase
+    sentence = string_to_int(list(sentence.strip()) + ['_'])
+    # On retourne la phrase deux fois pour designer l'entree et la cible
+    return sentence, sentence
 
-def getLMExamples(n, data_type='training', from_beginning=False):
+def getN_LMData(n, data_type='training'):
     """
     n: nombre d'exemples a prendre
     data_type: training ou evaluation
-    from_beginning: prendre les donnees depuis le debut ou au hasard
-    Retourne une liste de couple (inputs,targets)
+    Retourne une liste de donnees prete a etre utilisee dans le reseau de neurones
     """
-    
-    # On utilise la fonction zip afin de limiter notre nombre d'iterations sur la fonction getAllData a n
-    inputs = []
-    targets = []
-    for i in range(n):
-        (d,t) = getLMData(data_type, rand=not(from_beginning))
-        if not i == 0:
-            d = np.concatenate(([0], d))
-            t = np.concatenate(([d[-1]], t))
-        inputs = np.concatenate((inputs, d))
-        targets = np.concatenate((targets, t))
-    return np.array(np.expand_dims(np.array(inputs), axis=1), dtype=np.int32), np.array(targets, dtype=np.int32)
+    # On initialise les donnees
+    init_data()
+    d = []
+    # On choisit le dossier correspond aux donnees qu'on souhaite ouvrir
+    if data_type == 'training':
+        data = data_training
+    elif data_type == 'evaluation':
+        data = data_evaluation
+    # On itere n fois
+    for _ in  range(n):
+        # On recupere dans la donnee de facon aleatoire
+        data_id, sentence = random.choice(data)
+        # On recupere le couple grace a la fonction __get_LMData et des donnees trouvees dans la liste
+        d.append(__get_LMData(data_type, data_id, sentence))
+    # On retourne enfin les donnees au format attendu par notre reseau de neurones
+    d = np.concatenate(d, axis=1)
+    inputs = d[0][:-1]
+    targets = d[1][1:]
+    return np.expand_dims(np.array([inputs,targets]), axis=2)
 
-
-
+def getAll_LMData(n, data_type='training'):
+    """
+    n: nombre d'exemples a prendre par batch
+    data_type: training ou evaluation
+    Retourne un generateur de donnees prete a etre utilisees dans le reseau de neurones
+    L'ensemble des donnees sont parcourues
+    """
+    # On initialise les donnees
+    init_data()
+    # On choisit le dossier correspond aux donnees qu'on souhaite ouvrir
+    if data_type == 'training':
+        data = data_training
+    elif data_type == 'evaluation':
+        data = data_evaluation
+    # On melange notre dossier afin de pouvoir parcourir la liste des donnees dans un ordre distinct a chaque rappel de la fonction
+    random.shuffle(data)
+    # On initialise i a 0 et d a vide
+    i = 0
+    d = []
+    # On parcourt l'ensemble des donnees disponibles
+    for data_id, sentence in data:
+        # Si i est inferieur a n, cela veut dire qu'il faut encore remplir le batch
+        if i < n:
+            # on ajoute la donnee au batch et on incremente i de 1
+            d.append(__get_LMData(data_type, data_id, sentence))
+            i += 1
+        else:
+            # Si i >= n, on renvoie d car le batch est a la taille souhaitee
+            d = np.concatenate(d, axis=1)
+            inputs = d[0][:-1]
+            targets = d[1][1:]
+            yield np.expand_dims(np.array([inputs,targets]), axis=2)
+            # On remet la liste a vide et le compteur i a 0
+            d = []
+            i = 0
+    # A la fin du parcours, si la liste d n'est pas vide, cela veut dire qu'un batch n'etait pas complet mais ne peut etre rempli pour le completer
+    if d:
+        # On renvoie donc ce dernier batch
+        d = np.concatenate(d, axis=1)
+        inputs = d[0][:-1]
+        targets = d[1][1:]
+        yield np.expand_dims(np.array([inputs,targets]), axis=2)
 
 
 # Si on demarre le fichier directement
 if __name__ == '__main__':
-    
-    print(int_to_string(get_NAMData(2)[1][1]))
-
-   
-    #data,targets = getLMExamples(2, from_beginning=True)
-    #print('Inputs:')
-    #print(data)
-    #print('Targets:')
-    #print(targets)
+    d = getN_LMData(2)
+    print(d)
+    #print(int_to_string(get_NAMData(2)[1][1]))
