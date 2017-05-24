@@ -150,8 +150,9 @@ class LanguageModel:
                     sess.run(self.loss_validation, feed_dict={self.loss_validation: loss_validation})                    
                 
                     # On affiche la phrase d'etape
-                    print(log.format(epoch, self.global_step.eval(session=sess), min(100, (100 * (step*self.batch_s)/float(ls.nbr_data_training))), (loss/step), (loss_validation/step), time.time() - start))
+                    print(log.format(epoch, self.global_step.eval(session=sess), min(100, (100 * (step*self.batch_s)/float(ls.nbr_data_training))), loss, loss_eval, time.time() - start))
                 
+                loss_validation /= step
                 # Si la valeur du loss n'a pas evolue par rapport a l'ancienne
                 if previous_loss > 0.0 and loss_validation >= previous_loss:
                     # Si on a deja decremente notre learning rate, on s'arrete
