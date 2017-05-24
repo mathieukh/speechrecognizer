@@ -327,5 +327,4 @@ def getAll_LMData(n, data_type='training'):
 # Si on demarre le fichier directement
 if __name__ == '__main__':
     (inputs, targets) = getN_LMData(2)
-    print(d)
     #print(int_to_string(get_NAMData(2)[1][1]))
