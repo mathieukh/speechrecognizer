@@ -110,7 +110,7 @@ class LanguageModel:
         number_decrement = 0
         
         # On stocke un pattern de phrase pour printer a chaque tour
-        log = "Epoch {} / Step {}, batch_cost = {:.6f}, batch_eval_cost = {:.6f}, time = {:.3f}"
+        log = "Epoch {} / Step {} | {:.2f}% , batch_cost = {:.6f}, batch_eval_cost = {:.6f}, time = {:.3f}"
         # On demarre la session depuis le superviseur. Celui-ci se chargera de restaurer les variables si elles sont disponibles depuis une sauvegarde
         # Sinon ils les initialisera        
         with self.sv.managed_session() as sess:
@@ -123,7 +123,7 @@ class LanguageModel:
                 loss_training = 0.0
                 loss_validation = 0.0
                 # On parcoure l'ensemble de la base de training
-                for inputs, targets in ls.getAll_LMData(self.batch_s):
+                for step, (inputs, targets) in enumerate(ls.getAll_LMData(self.batch_s), start=1):
                     
                     # On prend une mesure du temps pour savoir combien de temps dure l'etape
                     start = time.time()
@@ -156,7 +156,7 @@ class LanguageModel:
                     sess.run(self.loss_validation, feed_dict={self.loss_validation: loss_validation})                    
                 
                     # On affiche la phrase d'etape
-                    print(log.format(epoch, self.global_step.eval(session=sess), loss, loss_validation, time.time() - start))
+                    print(log.format(epoch, self.global_step.eval(session=sess), min(100, (100 * (step*self.batch_s)/float(ls.nbr_data_training))), loss, loss_validation, time.time() - start))
                 
                 # Si la valeur du loss n'a pas evolue par rapport a l'ancienne
                 if previous_loss > 0.0 and loss_validation >= previous_loss:
