@@ -132,10 +132,7 @@ class LanguageModel:
                     loss,_ = sess.run([self.loss, self.opt], feed_dict={self._inputs: inputs, self._targets: targets})
                     
                     # On ajoute le loss du batch a la liste de loss_training
-                    if loss_training == 0.0:
-                        loss_training = loss
-                    else:
-                        loss_training = np.mean([loss_training, loss])
+                    loss_training += loss
                     
                     # On met a jour la variable pour qu'elle puisse etre summarise 
                     sess.run(self.loss_training, feed_dict={self.loss_training: loss_training})
@@ -147,16 +144,13 @@ class LanguageModel:
                     loss_eval = sess.run(self.loss, feed_dict={self._inputs: inputs_eval, self._targets: targets_eval}) 
                     
                     # On ajoute le loss du batch a la liste de loss_training
-                    if loss_validation == 0.0:
-                        loss_validation = loss_eval
-                    else:
-                        loss_validation = np.mean([loss_validation, loss_eval])     
+                    loss_validation += loss_eval
                         
                     # On met a jour la variable pour qu'elle puisse etre summarise 
                     sess.run(self.loss_validation, feed_dict={self.loss_validation: loss_validation})                    
                 
                     # On affiche la phrase d'etape
-                    print(log.format(epoch, self.global_step.eval(session=sess), min(100, (100 * (step*self.batch_s)/float(ls.nbr_data_training))), loss, loss_validation, time.time() - start))
+                    print(log.format(epoch, self.global_step.eval(session=sess), min(100, (100 * (step*self.batch_s)/float(ls.nbr_data_training))), (loss/step), (loss_validation/step), time.time() - start))
                 
                 # Si la valeur du loss n'a pas evolue par rapport a l'ancienne
                 if previous_loss > 0.0 and loss_validation >= previous_loss:
