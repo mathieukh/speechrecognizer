@@ -6,8 +6,8 @@ import libri as ls
 import time
 
 # Dossier ou sera stocke les donnees du superviseur
-#path_log = 'C:/Users/mkhalem/IdeaProjects/speechrecognizer/python/log_lm/'
-path_log = 'E:/Projet/PC/SpeechRecognizer/model/log_lm'
+path_log = 'C:/Users/mkhalem/IdeaProjects/speechrecognizer/python/log_lm/'
+#path_log = 'E:/Projet/PC/SpeechRecognizer/model/log_lm'
 
 class LanguageModel:
     
@@ -110,9 +110,7 @@ class LanguageModel:
         number_decrement = 0
         
         # On stocke un pattern de phrase pour printer a chaque tour
-        log = "Epoch {} / Step {}, batch_cost = {:.6f}, time = {:.3f}"
-        log_validation = "Epoch {}, cost_validation = {:.6f}"
-        
+        log = "Epoch {} / Step {}, batch_cost = {:.6f}, batch_eval_cost = {:.6f}, time = {:.3f}"
         # On demarre la session depuis le superviseur. Celui-ci se chargera de restaurer les variables si elles sont disponibles depuis une sauvegarde
         # Sinon ils les initialisera        
         with self.sv.managed_session() as sess:
@@ -139,9 +137,6 @@ class LanguageModel:
                     else:
                         loss_training = np.mean([loss_training, loss])
                     
-                    # On affiche la phrase d'etape
-                    print(log.format(epoch, self.global_step.eval(session=sess), loss, time.time() - start))
-                    
                     # On met a jour la variable pour qu'elle puisse etre summarise 
                     sess.run(self.loss_training, feed_dict={self.loss_training: loss_training})
                     
@@ -155,10 +150,13 @@ class LanguageModel:
                     if loss_validation == 0.0:
                         loss_validation = loss_eval
                     else:
-                        loss_validation = np.mean([loss_validation, loss_eval])                    
+                        loss_validation = np.mean([loss_validation, loss_eval])     
+                        
+                    # On met a jour la variable pour qu'elle puisse etre summarise 
+                    sess.run(self.loss_validation, feed_dict={self.loss_validation: loss_validation})                    
                 
                     # On affiche la phrase d'etape
-                    print(log_validation.format(epoch, loss_validation))
+                    print(log.format(epoch, self.global_step.eval(session=sess), loss, loss_validation, time.time() - start))
                 
                 # Si la valeur du loss n'a pas evolue par rapport a l'ancienne
                 if previous_loss > 0.0 and loss_validation >= previous_loss:
