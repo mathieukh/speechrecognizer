@@ -180,6 +180,29 @@ class AcousticModel:
                         loss_training = []                        
                         loss_validation = []
                         start = time.time()
+                
+                # Il reste des exemples a traiter mais ils n'ont pas ete catches par ils sont moins nombreux que le self.batch_size_awaited
+                if loss_training:
+                    # On calcule la moyenne de la liste des loss_training et loss_validation
+                    loss_training_mean = np.mean(loss_training)
+                    loss_validation_mean = np.mean(loss_validation)
+                
+                    loss_validation_epoch += [loss_validation_mean]
+                
+                    # On met a jour les variables pour le summary
+                    sess.run(self.loss_training, feed_dict={self.loss_training: loss_training_mean})
+                    sess.run(self.loss_validation, feed_dict={self.loss_validation: loss_validation_mean})                        
+                
+                    # On lance l'optimisation de notre RN avec les gradients accumules jusqu'a maintenant
+                    sess.run(self.train_step_op)
+                
+                    # On affiche la phrase d'etape
+                    print(log.format(epoch, self.global_step.eval(session=sess), min(100, (100 * (step*self.batch_s)/float(ls.nbr_data_training))), loss_training_mean, loss_validation_mean, time.time() - start))                        
+                
+                    # On met les gradients a zero, on remet le start a maintenant et on reinitialise les liste de loss
+                    sess.run(self.acc_gradients_zero_op)
+                    loss_training = []                        
+                    loss_validation = []               
                         
                 validation_loss = np.mean(loss_validation_epoch)        
                 # Si la valeur du loss n'a pas evolue par rapport a l'ancienne
