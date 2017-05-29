@@ -120,8 +120,8 @@ class LanguageModel:
                     break
                 
                 # On parcoure l'ensemble de la base d'entrainement
-                loss_training = 0.0
-                loss_validation = 0.0
+                loss_training = []
+                loss_validation = []
                 # On parcoure l'ensemble de la base de training
                 for step, (inputs, targets) in enumerate(ls.getAll_LMData(self.batch_s), start=1):
                     
@@ -132,10 +132,7 @@ class LanguageModel:
                     loss,_ = sess.run([self.loss, self.opt], feed_dict={self._inputs: inputs, self._targets: targets})
                     
                     # On ajoute le loss du batch a la liste de loss_training
-                    loss_training += loss
-                    
-                    # On met a jour la variable pour qu'elle puisse etre summarise 
-                    sess.run(self.loss_training, feed_dict={self.loss_training: loss_training})
+                    loss_training += [loss]
                     
                     # On prend le meme nombre d'exemples dans la base d'evaluation
                     inputs_eval, targets_eval = ls.getN_LMData(self.batch_s, data_type='evaluation')
@@ -144,17 +141,20 @@ class LanguageModel:
                     loss_eval = sess.run(self.loss, feed_dict={self._inputs: inputs_eval, self._targets: targets_eval}) 
                     
                     # On ajoute le loss du batch a la liste de loss_training
-                    loss_validation += loss_eval
-                        
+                    loss_validation += [loss_eval]
+                    
                     # On met a jour la variable pour qu'elle puisse etre summarise 
-                    sess.run(self.loss_validation, feed_dict={self.loss_validation: loss_validation})                    
+                    sess.run(self.loss_training, feed_dict={self.loss_training: np.mean(loss_training)})                
+                
+                    # On met a jour la variable pour qu'elle puisse etre summarise 
+                    sess.run(self.loss_validation, feed_dict={self.loss_validation: np.mean(loss_validation)})                    
                 
                     # On affiche la phrase d'etape
                     print(log.format(epoch, self.global_step.eval(session=sess), min(100, (100 * (step*self.batch_s)/float(ls.nbr_data_training))), loss, loss_eval, time.time() - start))
                 
-                loss_validation /= step
+                validation_loss = np.mean(loss_validation) 
                 # Si la valeur du loss n'a pas evolue par rapport a l'ancienne
-                if previous_loss > 0.0 and loss_validation >= previous_loss:
+                if previous_loss > 0.0 and validation_loss >= previous_loss:
                     # Si on a deja decremente notre learning rate, on s'arrete
                     if number_decrement > 0:
                         break
@@ -167,7 +167,7 @@ class LanguageModel:
                 # On incremente le compteur d'epoch
                 epoch += 1
                 # On change la valeur de previous_loss par loss_val
-                previous_loss = loss_validation
+                previous_loss = validation_loss
                 
     def predict(self, n, from_=[]):
         with self.sv.managed_session() as sess:
