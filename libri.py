@@ -80,7 +80,10 @@ def int_to_string(data):
 
 """
 Fonctions de recuperation de donnees pour le modele Acoustique
-
+Les fichiers de sauvegarde sont indispensables. Ils se presentent sous la forme d'un fichier pickle.
+Ils permettent de retenir une liste de couple avec l'id de chaque fichier ainsi que la phrase correspondante.
+Cette etape permet d'avoir une lecture beaucoup plus rapide de la base de donnees au lieu de faire des requetes
+systemes a repetition et tres couteuse en temps.
 """
 
 def init_data():
