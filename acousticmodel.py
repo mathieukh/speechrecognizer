@@ -190,7 +190,8 @@ class AcousticModel:
                             for (inputs_eval, seq_len_eval), targets_eval in ls.getAll_AMData(self.batch_s, data_type='evaluation'):
                                 loss_eval = sess.run(self.loss_batch, feed_dict={self._inputs: inputs_eval, self._seq_length: seq_len_eval, self._targets: targets_eval})
                                 loss_validation += [loss_eval]
-                        validation_loss = np.mean(loss_validation)        
+                        validation_loss = np.mean(loss_validation)  
+                        print('Current Loss = {}, Previous loss = {}, no_improvement_since = {}, learning_rate = {}'.format(validation_loss, previous_loss, no_improvement_since, self.learning_rate.eval(session=sess)))
                         # Si la valeur du loss n'a pas evolue par rapport a l'ancienne
                         if previous_loss > 0.0 and validation_loss >= previous_loss:
                             # On incremente no_improvement_since de 1
@@ -215,12 +216,13 @@ class AcousticModel:
     
     # Fonction de prediction
     def predict(self, inputs, seq_len):
-        with self.sv.managed_session() as sess:
+        # TODO
+        #with self.sv.managed_session() as sess:
             # On lance l'operation prediction avec les donnees d'entrees
             # On recupere le vecteur values qui represente la sequence decryptee de notre son par notre reseau de neurones
             # On convertit enfin afin d'obtenir la sequence strng 
-            (decoded, log_probabilities) = sess.run(self.prediction, feed_dict={self._inputs: inputs, self._seq_length: seq_len})
-            return ls.int_to_string(outputs[0].values)
+            #(decoded, log_probabilities) = sess.run(self.prediction, feed_dict={self._inputs: inputs, self._seq_length: seq_len})
+        return None
 
 # Si on demarre le fichier directement
 if __name__ == '__main__':
