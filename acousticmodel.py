@@ -120,10 +120,12 @@ class AcousticModel:
         previous_loss = 0
         no_improvement_since = 0
         framesAnalysed = 0
+        
+        # En ce tenant au modele, on a 10M avant l'evaluation et 2M a evaluer
+        framesBeforeEvaluation = 1e7
+        framesToEvaluate = 2e6
         # On demarre la session depuis le superviseur. Celui-ci se chargera de restaurer les variables si elles sont disponibles depuis une sauvegarde
         # Sinon ils les initialisera
-        # On stocke un pattern de phrase pour printer a chaque tour
-        log = "Epoch {} / Step {} | {:.2f}% , batch_cost = {:.6f}, batch_eval_cost = {:.6f}, time = {:.3f}"
         with self.sv.managed_session() as sess:
             while True:
                 # Si le superviseur demande un arret, on coupe la boucle d'apprentissage
@@ -133,7 +135,6 @@ class AcousticModel:
                 start = time.time()
                 
                 # On initialise les loss_training et loss_validation vides
-                loss_training = []
                 loss_validation_epoch = []
                 
                 # On met a zero nos gradients
@@ -143,12 +144,9 @@ class AcousticModel:
                 for step, ((inputs, seq_len), targets) in enumerate(ls.getAll_AMData(self.batch_s), start=1):
                     
                     # On calcule le cout du batch et on accumule le gradient
-                    _,loss = sess.run([self.accumulate_gradients_op, self.loss_batch], feed_dict={self._inputs: inputs, self._seq_length: seq_len, self._targets: targets})
+                    _,loss_training = sess.run([self.accumulate_gradients_op, self.loss_batch], feed_dict={self._inputs: inputs, self._seq_length: seq_len, self._targets: targets})
                     
                     framesAnalysed += np.sum(seq_len)
-                    
-                    # On ajoute le cout du batch au loss_training 
-                    loss_training += [loss]
                     
                     # On pioche aleatoirement une donnee de la base d'evaluation
                     (inputs_eval, seq_len_eval), targets_eval = ls.getN_AMData(self.batch_s, data_type='evaluation')
@@ -156,14 +154,11 @@ class AcousticModel:
                     # On calcule le loss dessus
                     loss_eval = sess.run(self.loss_batch, feed_dict={self._inputs: inputs_eval, self._seq_length: seq_len_eval, self._targets: targets_eval})
                     
-                    # On calcule la moyenne de la liste des loss_training et loss_validation
-                    loss_training_mean = np.mean(loss_training)
-                    
                     # On met a jour les variables pour le summary
-                    sess.run(self.loss_training, feed_dict={self.loss_training: loss_training_mean})
+                    sess.run(self.loss_training, feed_dict={self.loss_training: loss_training})
                     sess.run(self.loss_validation, feed_dict={self.loss_validation: loss_eval})
                     
-                    print('Epoch {} - {}/{} - {}%'.format(epoch, (stepAwaited*self.batch_s), self.batch_size_awaited, (100 * framesAnalysed/1e7)))
+                    print('Epoch {} - {}/{} - {}%'.format(epoch, (stepAwaited*self.batch_s), self.batch_size_awaited, min(100, (100 * framesAnalysed/framesBeforeEvaluation))))
                     stepAwaited += 1
                     
                     # Si on arrive au nombre souhaite d'exemples cumules
@@ -174,22 +169,22 @@ class AcousticModel:
                         sess.run(self.train_step_op)
                         
                         # On affiche la phrase d'etape
-                        print(log.format(epoch, self.global_step.eval(session=sess), min(100, (100 * (step*self.batch_s)/float(ls.nbr_data_training))), loss_training_mean, loss_eval, time.time() - start))                        
+                        print("time = {:.3f}".format(time.time() - start))
                         
                         # On met les gradients a zero, on remet le start a maintenant et on reinitialise les liste de loss
                         sess.run(self.acc_gradients_zero_op)
-                        loss_training = []
                         start = time.time()
                         stepAwaited = 1
                     
-                    if framesAnalysed >= 1e7:
+                    if framesAnalysed >= framesBeforeEvaluation:
                         loss_validation = []
                         framesAnalysed = 0
                         framesValid = 0
-                        while framesValid < 2e6:
-                            for (inputs_eval, seq_len_eval), targets_eval in ls.getAll_AMData(self.batch_s, data_type='evaluation'):
-                                loss_eval = sess.run(self.loss_batch, feed_dict={self._inputs: inputs_eval, self._seq_length: seq_len_eval, self._targets: targets_eval})
-                                loss_validation += [loss_eval]
+                        while framesValid < framesToEvaluate:
+                            (inputs_eval, seq_len_eval), targets_eval = ls.getN_AMData(self.batch_s, data_type='evaluation')
+                            loss_eval = sess.run(self.loss_batch, feed_dict={self._inputs: inputs_eval, self._seq_length: seq_len_eval, self._targets: targets_eval})
+                            framesValid += np.sum(seq_len_eval)
+                            loss_validation += [loss_eval]
                         validation_loss = np.mean(loss_validation)  
                         print('Current Loss = {}, Previous loss = {}, no_improvement_since = {}, learning_rate = {}'.format(validation_loss, previous_loss, no_improvement_since, self.learning_rate.eval(session=sess)))
                         # Si la valeur du loss n'a pas evolue par rapport a l'ancienne
