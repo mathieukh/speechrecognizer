@@ -1,3 +1,5 @@
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL']='2'
 import tensorflow as tf
 import libri as ls
 import numpy as np
@@ -12,7 +14,7 @@ class AcousticModel:
     def __init__(self):
         
         self.batch_size_awaited = 1024 # Nombre d'exemples a prendre par batch
-        self.batch_s = 8 # Nombre d'exemples a prendre par mini-batch
+        self.batch_s = 2 # Nombre d'exemples a prendre par mini-batch
         n_lstm = 768 # Nombre de neurones par couche LSTM
         n_input = 123 # Nombre d'entrees dans notre reseau (40 log mel-filterbank feature et energie + delta + double delta)
         n_classes = 30 # Nombre de sorties de notre reseau (26 lettres, 1 espace, 1 apostrophe, 1 EOS, 1 blank label pour le ctc)
