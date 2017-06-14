@@ -6,8 +6,8 @@ import libri as ls
 import time
 
 # Dossier ou sera stocke les donnees du superviseur
-path_log = 'C:/Users/mkhalem/IdeaProjects/speechrecognizer/python/log_lm/'
-#path_log = 'E:/Projet/PC/SpeechRecognizer/model/log_lm'
+#path_log = 'C:/Users/mkhalem/IdeaProjects/speechrecognizer/python/log_lm/'
+path_log = 'E:/Projet/PC/SpeechRecognizer/model/log_lm'
 
 class LanguageModel:
     

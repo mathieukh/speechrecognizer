@@ -7,8 +7,8 @@ from python_speech_features import fbank
 from python_speech_features import delta
 
 # Mettre les chemins relatifs a nos donnees ici
-path = "V:/Projets/Machine Learning/Data/"
-#path = "E:/Projet/PC/SpeechRecognizer/Data/"
+#path = "V:/Projets/Machine Learning/Data/"
+path = "E:/Projet/PC/SpeechRecognizer/Data/"
 
 path_training = path + "training/"
 path_evaluation = path + "evaluation/"

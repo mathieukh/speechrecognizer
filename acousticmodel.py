@@ -4,7 +4,8 @@ import numpy as np
 import time
 
 # Dossier ou sera stocke les donnees du superviseur
-path_log = 'C:/Users/mkhalem/IdeaProjects/speechrecognizer/python/log_am/'
+#path_log = 'C:/Users/mkhalem/IdeaProjects/speechrecognizer/python/log_am/'
+path_log = 'E:/Projet/PC/SpeechRecognizer/model/log_am'
 
 class AcousticModel:
     
